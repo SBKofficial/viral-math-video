@@ -1,7 +1,7 @@
 import random
 import requests
 import os
-from gtts import gTTS # standard google tts
+from gtts import gTTS
 from moviepy.editor import *
 from moviepy.audio.fx.all import audio_loop
 
@@ -11,19 +11,26 @@ TEXT_COLOR = 'white'
 FONT = 'Impact'
 THINKING_TIME = 4 
 
-# --- 1. ASSET DOWNLOADER ---
+# --- 1. ASSET DOWNLOADER (Fixed with Headers & Validation) ---
 def download_assets():
-    # Google's Open Sound Library
+    # We use a User-Agent to prevent 403 Forbidden errors
+    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
     sfx_url = "https://actions.google.com/sounds/v1/alarms/mechanical_clock_ticking.ogg"
-    if not os.path.exists("ticking.ogg"):
-        try:
+    
+    try:
+        # Check if file exists and has content
+        if not os.path.exists("ticking.ogg") or os.path.getsize("ticking.ogg") == 0:
             print("Downloading Ticking Sound...")
-            r = requests.get(sfx_url)
-            with open("ticking.ogg", 'wb') as f:
-                f.write(r.content)
-            print("Download Complete.")
-        except Exception as e:
-            print(f"Error downloading SFX: {e}")
+            r = requests.get(sfx_url, headers=headers, timeout=10)
+            
+            if r.status_code == 200:
+                with open("ticking.ogg", 'wb') as f:
+                    f.write(r.content)
+                print("Download Complete.")
+            else:
+                print(f"Download failed with status: {r.status_code}")
+    except Exception as e:
+        print(f"Error downloading SFX: {e}")
 
 # --- 2. MATH GENERATOR ---
 def generate_viral_problem():
@@ -39,17 +46,12 @@ def generate_viral_problem():
         return f"{base} ÷ 2({random.randint(1,2)} + 2)"
     return "5 + 5 x 5 - 5" 
 
-# --- 3. GOOGLE VOICE GENERATOR (Fixed) ---
+# --- 3. VOICE GENERATOR ---
 def create_voiceover():
     print("Generating Audio...")
-    
-    # Hook
-    # tld='com' uses the standard US accent. 
-    # tld='co.uk' would be British, 'co.in' for Indian accent if preferred.
     tts_hook = gTTS("Only 1 percent can solve this question.", lang='en', tld='com')
     tts_hook.save("audio_hook.mp3")
     
-    # CTA
     text = "Comment your answer. Subscribe for more such questions, and like if you think this is tricky."
     tts_cta = gTTS(text, lang='en', tld='com')
     tts_cta.save("audio_cta.mp3")
@@ -57,30 +59,40 @@ def create_voiceover():
 # --- 4. VIDEO ENGINE ---
 def create_math_short():
     print("Starting Video Generation...")
+    
+    # 1. Prepare Assets
     download_assets() 
     problem = generate_viral_problem()
-    
-    # No asyncio needed for gTTS
     create_voiceover() 
     
-    # --- AUDIO ASSEMBLY ---
+    # 2. Load Audio Clips
     clip_hook = AudioFileClip("audio_hook.mp3")
     clip_cta = AudioFileClip("audio_cta.mp3")
     
-    if os.path.exists("ticking.ogg"):
-        clip_tick = AudioFileClip("ticking.ogg")
-        clip_tick = audio_loop(clip_tick, duration=THINKING_TIME)
-        clip_tick = clip_tick.volumex(0.6)
-    else:
+    # 3. Robust Ticking Sound Loader
+    # If the file is broken/empty, we fallback to silence instead of crashing
+    try:
+        if os.path.exists("ticking.ogg") and os.path.getsize("ticking.ogg") > 100:
+            clip_tick = AudioFileClip("ticking.ogg")
+            clip_tick = audio_loop(clip_tick, duration=THINKING_TIME)
+            clip_tick = clip_tick.volumex(0.6)
+            print("Ticking sound loaded successfully.")
+        else:
+            raise Exception("File invalid or empty")
+    except Exception as e:
+        print(f"Skipping ticking sound due to error: {e}")
+        # Create silent audio for the duration of thinking time
         clip_tick = AudioClip(lambda t: [0], duration=THINKING_TIME)
 
+    # 4. Assemble Audio
     final_audio = concatenate_audioclips([clip_hook, clip_tick, clip_cta])
     
+    # Timings
     start_thinking = clip_hook.duration
     start_cta = clip_hook.duration + THINKING_TIME
     total_duration = final_audio.duration
 
-    # --- VISUAL ASSEMBLY ---
+    # 5. Visuals
     w, h = 1080, 1920
     bg = ColorClip(size=(w, h), color=BACKGROUND_COLOR).set_duration(total_duration)
     
@@ -97,6 +109,7 @@ def create_math_short():
     sub_txt = TextClip("SUBSCRIBE & LIKE 👍", fontsize=70, color='red', font=FONT, stroke_color='white', stroke_width=2)
     sub_txt = sub_txt.set_position(('center', 1500)).set_start(start_cta + 1.5).set_duration(clip_cta.duration - 1.5)
 
+    # 6. Render
     final = CompositeVideoClip([bg, hook_txt, question_txt, comment_txt, sub_txt], size=(w, h))
     final = final.set_audio(final_audio)
     
