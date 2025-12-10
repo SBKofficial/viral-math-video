@@ -1,3 +1,9 @@
+# --- MONKEY PATCH (Fixes the PIL.Image.ANTIALIAS crash) ---
+import PIL.Image
+if not hasattr(PIL.Image, 'ANTIALIAS'):
+    PIL.Image.ANTIALIAS = PIL.Image.LANCZOS
+# ----------------------------------------------------------
+
 import random
 import requests
 import os
@@ -26,8 +32,7 @@ def download_assets():
     except Exception as e:
         print(f"Background download failed: {e}")
 
-    # B. Download Ticking Sound (More reliable source)
-    # Using a raw GitHub link usually bypasses bot protection better than Google
+    # B. Download Ticking Sound
     sfx_url = "https://github.com/rafaelreis-hotmart/Audio-Sample-files/raw/master/sample.ogg"
     
     try:
@@ -61,7 +66,7 @@ def create_voiceover():
     tts_cta = gTTS("Comment your answer and Subscribe.", lang='en', tld='com')
     tts_cta.save("audio_cta.mp3")
 
-# --- 4. VIDEO ENGINE (CRASH PROOF) ---
+# --- 4. VIDEO ENGINE ---
 def create_math_short():
     download_assets() 
     problem = generate_viral_problem()
@@ -71,16 +76,13 @@ def create_math_short():
     clip_hook = AudioFileClip("audio_hook.mp3")
     clip_cta = AudioFileClip("audio_cta.mp3")
     
-    # SAFETY CHECK: Ticking Sound
-    # We define clip_tick initially as silence (default)
-    clip_tick = AudioClip(lambda t: [0], duration=THINKING_TIME)
+    # Audio Safety Logic
+    clip_tick = AudioClip(lambda t: [0], duration=THINKING_TIME) # Default Silence
     
     try:
-        # Check if file exists AND is larger than 1KB (avoid empty file crash)
         if os.path.exists("ticking.ogg") and os.path.getsize("ticking.ogg") > 1024:
             print("Loading Ticking Sound...")
             real_tick = AudioFileClip("ticking.ogg")
-            # Loop it to fit thinking time
             real_tick = audio_loop(real_tick, duration=THINKING_TIME)
             clip_tick = real_tick.volumex(0.5)
         else:
@@ -88,7 +90,6 @@ def create_math_short():
     except Exception as e:
         print(f"Error loading audio file: {e}. Using silence.")
 
-    # Combine Audio
     final_audio = concatenate_audioclips([clip_hook, clip_tick, clip_cta])
     
     start_thinking = clip_hook.duration
@@ -98,9 +99,10 @@ def create_math_short():
     # --- VISUAL SETUP ---
     w, h = 1080, 1920
     
-    # Background
+    # Background Logic
     if os.path.exists("background.jpg") and os.path.getsize("background.jpg") > 1024:
         bg_img = ImageClip("background.jpg")
+        # The .resize() call below is what was crashing. The patch at the top fixes it.
         bg = bg_img.resize(height=h).crop(x1=0, y1=0, width=w, height=h, x_center=bg_img.w/2, y_center=h/2)
     else:
         bg = ColorClip(size=(w, h), color=(20, 20, 20))
