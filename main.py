@@ -16,20 +16,19 @@ from moviepy.audio.fx.all import audio_loop
 THINKING_TIME = 2.5 
 FONT = 'Impact'
 
-# --- ANIMATION FUNCTIONS ---
-def slide_down(t, duration=0.8, start_y=-300, final_y=150): # Moved final_y higher (150)
+# --- ANIMATION FUNCTIONS (Safe Coordinates) ---
+def slide_down(t, duration=0.8, start_y=-200, final_y=150):
     if t < duration:
-        progress = t / duration
-        progress = 1 - (1 - progress) ** 3 
+        # Smooth Ease-out
+        progress = 1 - (1 - t/duration) ** 3 
         current_y = start_y + (final_y - start_y) * progress
         return ('center', int(current_y))
     else:
         return ('center', final_y)
 
-def slide_up(t, duration=0.5, start_y=1700, final_y=1550): # Moved final_y lower (1550)
+def slide_up(t, duration=0.5, start_y=1800, final_y=1550):
     if t < duration:
-        progress = t / duration
-        progress = 1 - (1 - progress) ** 3
+        progress = 1 - (1 - t/duration) ** 3
         current_y = start_y + (final_y - start_y) * progress
         return ('center', int(current_y))
     else:
@@ -39,25 +38,22 @@ def slide_up(t, duration=0.5, start_y=1700, final_y=1550): # Moved final_y lower
 def prepare_assets():
     headers = {'User-Agent': 'Mozilla/5.0'}
     
-    # Check for local background first
+    # 1. Background Check
     if os.path.exists("background.jpg") and os.path.getsize("background.jpg") > 5000:
-        print("✅ Using Local background.jpg")
+        print("✅ Local background.jpg detected.")
     else:
-        print("⚠️ No local background. Downloading AI backup...")
-        seed = random.randint(1, 99999)
-        # Using a bright, clear nature prompt
-        prompt = "vertical nature, bright sunlight, mountains, clear sky, majestic, 8k"
-        safe_prompt = urllib.parse.quote(prompt)
-        ai_url = f"https://image.pollinations.ai/prompt/{safe_prompt}?width=1080&height=1920&nologo=true&seed={seed}&model=flux"
+        print("⚠️ Downloading Backup Background...")
         try:
-            r = requests.get(ai_url, headers=headers, timeout=30)
+            # Using a reliable static nature image (Unsplash Source)
+            url = "https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?q=80&w=1080&auto=format&fit=crop"
+            r = requests.get(url, headers=headers, timeout=30)
             if r.status_code == 200:
                 with open("background.jpg", 'wb') as f:
                     f.write(r.content)
-        except:
-            pass
+        except Exception as e:
+            print(f"Background download error: {e}")
 
-    # Download Sound
+    # 2. Sound Check
     if not os.path.exists("ticking.ogg"):
         try:
             r = requests.get("https://github.com/rafaelreis-hotmart/Audio-Sample-files/raw/master/sample.ogg", headers=headers, timeout=30)
@@ -93,67 +89,66 @@ def create_math_short():
     problem = generate_viral_problem()
     create_voiceover() 
     
-    # Audio
+    # --- AUDIO LAYERING ---
     clip_hook = AudioFileClip("audio_hook.mp3")
     clip_cta = AudioFileClip("audio_cta.mp3")
-    clip_tick = AudioClip(lambda t: [0], duration=THINKING_TIME)
     
+    # Silence as default tick
+    clip_tick = AudioClip(lambda t: [0], duration=THINKING_TIME)
     try:
-        if os.path.exists("ticking.ogg") and os.path.getsize("ticking.ogg") > 1024:
+        if os.path.exists("ticking.ogg"):
             real_tick = AudioFileClip("ticking.ogg")
             real_tick = audio_loop(real_tick, duration=THINKING_TIME)
             clip_tick = real_tick.volumex(0.5)
-    except:
-        pass
+    except: pass
 
     final_audio = concatenate_audioclips([clip_hook, clip_tick, clip_cta])
+    
+    # Calculate Timings
     start_thinking = clip_hook.duration
     start_cta = clip_hook.duration + THINKING_TIME
     total_duration = final_audio.duration
 
-    # --- VISUALS ---
+    # --- VISUAL LAYERING (Bottom to Top) ---
     w, h = 1080, 1920
     
-    # Background - FORCE VISIBILITY
+    # LAYER 1: BACKGROUND
     if os.path.exists("background.jpg") and os.path.getsize("background.jpg") > 5000:
         bg_img = ImageClip("background.jpg")
-        # Ensure it covers the screen
+        print(f"DEBUG: Loaded Background Size: {bg_img.size}")
+        # Force Resize to 1080x1920
         bg = bg_img.resize(height=h)
         bg = bg.crop(x1=bg.w/2 - w/2, y1=0, width=w, height=h)
     else:
-        # Emergency backup is NOT black anymore - it's a bright blue sky color
-        print("Using Emergency Blue (Background Missing)")
-        bg = ColorClip(size=(w, h), color=(50, 100, 200))
+        print("DEBUG: Using Fallback Color Background")
+        bg = ColorClip(size=(w, h), color=(50, 100, 200)) # Blue fallback
     
     bg = bg.set_duration(total_duration)
-    
-    # REMOVED THE DARK OVERLAY LAYER HERE
-    # The background will now be 100% visible and bright
 
-    # --- TEXT (Optimized for Visibility) ---
-    
-    # HOOK: Moved UP (y=150) and reduced size (90->80)
+    # LAYER 2: TEXT HOOK
     hook_txt = TextClip("ONLY 1% PASS", fontsize=80, color='yellow', font=FONT, stroke_color='black', stroke_width=4)
     hook_txt = hook_txt.set_position(lambda t: slide_down(t))
     hook_txt = hook_txt.set_duration(total_duration)
 
-    # QUESTION: Kept Center, increased Stroke for readability against bright bg
+    # LAYER 3: TEXT QUESTION
     question_txt = TextClip(f"{problem} = ?", fontsize=110, color='white', font=FONT, stroke_color='black', stroke_width=5)
     question_txt = question_txt.set_position('center')
     question_txt = question_txt.set_start(start_thinking).set_duration(THINKING_TIME + clip_cta.duration).crossfadein(0.3)
 
-    # CTA: Moved DOWN (y=1550) and reduced size (60->55)
+    # LAYER 4: TEXT CTA
     comment_txt = TextClip("👇 COMMENT ANSWER 👇", fontsize=55, color='cyan', font=FONT, stroke_color='black', stroke_width=4)
     comment_txt = comment_txt.set_position(lambda t: slide_up(t))
     comment_txt = comment_txt.set_start(start_cta).set_duration(clip_cta.duration)
 
     # --- RENDER ---
-    # Note: 'dark_layer' is removed from this list
+    # Important: The order in this list determines the Z-Index (Layer order)
+    # bg is first (bottom), text is last (top)
     final = CompositeVideoClip([bg, hook_txt, question_txt, comment_txt], size=(w, h))
     final = final.set_audio(final_audio)
     
-    print("Rendering Video...")
-    final.write_videofile("math_final.mp4", fps=24, preset='ultrafast', codec='libx264')
+    print("Rendering Video with YUV420P (Mobile Safe)...")
+    # ADDED: ffmpeg_params=['-pix_fmt', 'yuv420p'] to fix black screen issues
+    final.write_videofile("math_final.mp4", fps=24, preset='ultrafast', codec='libx264', ffmpeg_params=['-pix_fmt', 'yuv420p'])
     
     with open("metadata.txt", "w") as f:
         f.write(f"Only 1% Can Solve This! {problem} #shorts")
