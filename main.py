@@ -1,4 +1,4 @@
-# --- MONKEY PATCH (Fixes the PIL.Image.ANTIALIAS crash) ---
+# --- MONKEY PATCH (Fixes Pillow crash) ---
 import PIL.Image
 if not hasattr(PIL.Image, 'ANTIALIAS'):
     PIL.Image.ANTIALIAS = PIL.Image.LANCZOS
@@ -14,31 +14,44 @@ from moviepy.audio.fx.all import audio_loop
 # --- CONFIGURATION ---
 THINKING_TIME = 2.5 
 FONT = 'Impact'
-POLLINATIONS_PROMPT = "mysterious blackboard with complex mathematical formulas, cinematic lighting, 8k render, dark atmosphere"
+# New "Mature" Prompt
+POLLINATIONS_PROMPT = "dark academia aesthetic background, old library shelves, textured paper, cinematic moody lighting, mysterious, 8k render"
+
+# --- ANIMATION FUNCTIONS ---
+def slide_down(t, duration=0.8, start_y=-300, final_y=200):
+    # Slides text from off-screen top (start_y) to position (final_y)
+    if t < duration:
+        # Linear interpolation for smooth movement
+        progress = t / duration
+        current_y = start_y + (final_y - start_y) * progress
+        return ('center', int(current_y))
+    else:
+        return ('center', final_y)
 
 # --- 1. ASSET FACTORY ---
 def download_assets():
     headers = {'User-Agent': 'Mozilla/5.0'}
     
-    # A. Download AI Background (Timeout increased to 30s)
-    seed = random.randint(1, 9999)
+    # A. Download AI Background (Increased timeout to 60s for reliability)
+    seed = random.randint(1, 99999)
     bg_url = f"https://image.pollinations.ai/prompt/{POLLINATIONS_PROMPT} {seed}"
     try:
-        print("Downloading Background...")
-        r = requests.get(bg_url, headers=headers, timeout=30)
-        if r.status_code == 200 and len(r.content) > 1000:
+        print(f"Downloading AI Background (Seed: {seed})...")
+        r = requests.get(bg_url, headers=headers, timeout=60)
+        if r.status_code == 200 and len(r.content) > 5000: # Ensure substantial image size
             with open("background.jpg", 'wb') as f:
                 f.write(r.content)
             print("Background Downloaded.")
+        else:
+             print("Background download got small or empty file.")
     except Exception as e:
         print(f"Background download failed: {e}")
 
     # B. Download Ticking Sound
     sfx_url = "https://github.com/rafaelreis-hotmart/Audio-Sample-files/raw/master/sample.ogg"
-    
     try:
         print("Downloading Ticking SFX...")
-        r = requests.get(sfx_url, headers=headers, timeout=10)
+        r = requests.get(sfx_url, headers=headers, timeout=30)
         with open("ticking.ogg", 'wb') as f:
             f.write(r.content)
     except Exception as e:
@@ -69,6 +82,9 @@ def create_voiceover():
 
 # --- 4. VIDEO ENGINE ---
 def create_math_short():
+    # Clean up old assets first
+    if os.path.exists("background.jpg"): os.remove("background.jpg")
+    
     download_assets() 
     problem = generate_viral_problem()
     create_voiceover() 
@@ -78,16 +94,13 @@ def create_math_short():
     clip_cta = AudioFileClip("audio_cta.mp3")
     
     # Audio Safety Logic
-    clip_tick = AudioClip(lambda t: [0], duration=THINKING_TIME) # Default Silence
-    
+    clip_tick = AudioClip(lambda t: [0], duration=THINKING_TIME)
     try:
         if os.path.exists("ticking.ogg") and os.path.getsize("ticking.ogg") > 1024:
             print("Loading Ticking Sound...")
             real_tick = AudioFileClip("ticking.ogg")
             real_tick = audio_loop(real_tick, duration=THINKING_TIME)
             clip_tick = real_tick.volumex(0.5)
-        else:
-            print("Ticking file invalid/empty. Using silence.")
     except Exception as e:
         print(f"Error loading audio file: {e}. Using silence.")
 
@@ -101,28 +114,38 @@ def create_math_short():
     w, h = 1080, 1920
     
     # Background Logic
-    if os.path.exists("background.jpg") and os.path.getsize("background.jpg") > 1024:
+    if os.path.exists("background.jpg") and os.path.getsize("background.jpg") > 5000:
+        print("Using AI Background.")
         bg_img = ImageClip("background.jpg")
         bg = bg_img.resize(height=h).crop(x1=0, y1=0, width=w, height=h, x_center=bg_img.w/2, y_center=h/2)
     else:
-        bg = ColorClip(size=(w, h), color=(20, 20, 20))
+        print("Using Fallback Background (Mature Sepia).")
+        # Fallback color is now a mature dark sepia/brown, not gray
+        bg = ColorClip(size=(w, h), color=(40, 25, 15))
     
     bg = bg.set_duration(total_duration)
     
-    # --- THE FIX IS HERE ---
-    # We moved .set_opacity() to the end chain
-    dark_layer = ColorClip(size=(w, h), color=(0,0,0)).set_opacity(0.6).set_duration(total_duration)
+    # Reduced opacity so the background shows through more
+    dark_layer = ColorClip(size=(w, h), color=(0,0,0)).set_opacity(0.4).set_duration(total_duration)
 
-    # Text Elements
+    # --- TEXT ANIMATIONS ---
+    
+    # HOOK: SLIDE DOWN ANIMATION
     hook_txt = TextClip("ONLY 1% PASS", fontsize=90, color='yellow', font=FONT, stroke_color='black', stroke_width=3)
-    hook_txt = hook_txt.set_position(('center', 200)).set_duration(total_duration).crossfadein(0.5)
+    # Apply the slide_down function to the position
+    hook_txt = hook_txt.set_position(lambda t: slide_down(t, duration=0.8, final_y=200))
+    hook_txt = hook_txt.set_duration(total_duration)
 
+    # QUESTION: FADE POP
     question_txt = TextClip(f"{problem} = ?", fontsize=110, color='white', font=FONT, stroke_color='black', stroke_width=4)
     question_txt = question_txt.set_position('center')
-    question_txt = question_txt.set_start(start_thinking).set_duration(THINKING_TIME + clip_cta.duration).crossfadein(0.2)
+    question_txt = question_txt.set_start(start_thinking).set_duration(THINKING_TIME + clip_cta.duration).crossfadein(0.3)
 
+    # CTA: SLIDE UP (Simple reverse slide)
     comment_txt = TextClip("👇 COMMENT ANSWER 👇", fontsize=60, color='cyan', font=FONT, stroke_color='black', stroke_width=2)
-    comment_txt = comment_txt.set_position(('center', 1400)).set_start(start_cta).set_duration(clip_cta.duration).crossfadein(0.5)
+    # Slides up from 1600 to 1400 over 0.5s
+    comment_txt = comment_txt.set_position(lambda t: slide_down(t, duration=0.5, start_y=1600, final_y=1400))
+    comment_txt = comment_txt.set_start(start_cta).set_duration(clip_cta.duration)
 
     # --- RENDER ---
     final = CompositeVideoClip([bg, dark_layer, hook_txt, question_txt, comment_txt], size=(w, h))
