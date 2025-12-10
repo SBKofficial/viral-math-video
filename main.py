@@ -16,10 +16,9 @@ from moviepy.audio.fx.all import audio_loop
 THINKING_TIME = 2.5 
 FONT = 'Impact'
 
-# --- ANIMATION FUNCTIONS (Safe Coordinates) ---
-def slide_down(t, duration=0.8, start_y=-200, final_y=150):
+# --- ANIMATION FUNCTIONS ---
+def slide_down(t, duration=0.8, start_y=-200, final_y=180): # Moved down slightly to y=180
     if t < duration:
-        # Smooth Ease-out
         progress = 1 - (1 - t/duration) ** 3 
         current_y = start_y + (final_y - start_y) * progress
         return ('center', int(current_y))
@@ -89,11 +88,10 @@ def create_math_short():
     problem = generate_viral_problem()
     create_voiceover() 
     
-    # --- AUDIO LAYERING ---
+    # --- AUDIO ---
     clip_hook = AudioFileClip("audio_hook.mp3")
     clip_cta = AudioFileClip("audio_cta.mp3")
     
-    # Silence as default tick
     clip_tick = AudioClip(lambda t: [0], duration=THINKING_TIME)
     try:
         if os.path.exists("ticking.ogg"):
@@ -103,51 +101,45 @@ def create_math_short():
     except: pass
 
     final_audio = concatenate_audioclips([clip_hook, clip_tick, clip_cta])
-    
-    # Calculate Timings
     start_thinking = clip_hook.duration
     start_cta = clip_hook.duration + THINKING_TIME
     total_duration = final_audio.duration
 
-    # --- VISUAL LAYERING (Bottom to Top) ---
+    # --- VISUALS ---
     w, h = 1080, 1920
     
-    # LAYER 1: BACKGROUND
+    # LAYER 1: BACKGROUND (The Fix)
     if os.path.exists("background.jpg") and os.path.getsize("background.jpg") > 5000:
         bg_img = ImageClip("background.jpg")
-        print(f"DEBUG: Loaded Background Size: {bg_img.size}")
-        # Force Resize to 1080x1920
-        bg = bg_img.resize(height=h)
-        bg = bg.crop(x1=bg.w/2 - w/2, y1=0, width=w, height=h)
+        # FORCE RESIZE to exact screen dimensions (Solves the black bar issue)
+        bg = bg_img.resize(newsize=(w, h))
     else:
         print("DEBUG: Using Fallback Color Background")
-        bg = ColorClip(size=(w, h), color=(50, 100, 200)) # Blue fallback
+        bg = ColorClip(size=(w, h), color=(50, 100, 200)) 
     
-    bg = bg.set_duration(total_duration)
+    bg = bg.set_position(('center', 'center')).set_duration(total_duration)
 
     # LAYER 2: TEXT HOOK
-    hook_txt = TextClip("ONLY 1% PASS", fontsize=80, color='yellow', font=FONT, stroke_color='black', stroke_width=4)
+    # Increased stroke width to 6 for better readability against nature
+    hook_txt = TextClip("ONLY 1% PASS", fontsize=80, color='yellow', font=FONT, stroke_color='black', stroke_width=6)
     hook_txt = hook_txt.set_position(lambda t: slide_down(t))
     hook_txt = hook_txt.set_duration(total_duration)
 
     # LAYER 3: TEXT QUESTION
-    question_txt = TextClip(f"{problem} = ?", fontsize=110, color='white', font=FONT, stroke_color='black', stroke_width=5)
+    question_txt = TextClip(f"{problem} = ?", fontsize=110, color='white', font=FONT, stroke_color='black', stroke_width=6)
     question_txt = question_txt.set_position('center')
     question_txt = question_txt.set_start(start_thinking).set_duration(THINKING_TIME + clip_cta.duration).crossfadein(0.3)
 
     # LAYER 4: TEXT CTA
-    comment_txt = TextClip("👇 COMMENT ANSWER 👇", fontsize=55, color='cyan', font=FONT, stroke_color='black', stroke_width=4)
+    comment_txt = TextClip("👇 COMMENT ANSWER 👇", fontsize=55, color='cyan', font=FONT, stroke_color='black', stroke_width=5)
     comment_txt = comment_txt.set_position(lambda t: slide_up(t))
     comment_txt = comment_txt.set_start(start_cta).set_duration(clip_cta.duration)
 
     # --- RENDER ---
-    # Important: The order in this list determines the Z-Index (Layer order)
-    # bg is first (bottom), text is last (top)
     final = CompositeVideoClip([bg, hook_txt, question_txt, comment_txt], size=(w, h))
     final = final.set_audio(final_audio)
     
-    print("Rendering Video with YUV420P (Mobile Safe)...")
-    # ADDED: ffmpeg_params=['-pix_fmt', 'yuv420p'] to fix black screen issues
+    print("Rendering Video with YUV420P...")
     final.write_videofile("math_final.mp4", fps=24, preset='ultrafast', codec='libx264', ffmpeg_params=['-pix_fmt', 'yuv420p'])
     
     with open("metadata.txt", "w") as f:
