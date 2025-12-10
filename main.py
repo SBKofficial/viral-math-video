@@ -20,15 +20,16 @@ POLLINATIONS_PROMPT = "mysterious blackboard with complex mathematical formulas,
 def download_assets():
     headers = {'User-Agent': 'Mozilla/5.0'}
     
-    # A. Download AI Background
+    # A. Download AI Background (Timeout increased to 30s)
     seed = random.randint(1, 9999)
     bg_url = f"https://image.pollinations.ai/prompt/{POLLINATIONS_PROMPT} {seed}"
     try:
         print("Downloading Background...")
-        r = requests.get(bg_url, headers=headers, timeout=15)
+        r = requests.get(bg_url, headers=headers, timeout=30)
         if r.status_code == 200 and len(r.content) > 1000:
             with open("background.jpg", 'wb') as f:
                 f.write(r.content)
+            print("Background Downloaded.")
     except Exception as e:
         print(f"Background download failed: {e}")
 
@@ -102,13 +103,15 @@ def create_math_short():
     # Background Logic
     if os.path.exists("background.jpg") and os.path.getsize("background.jpg") > 1024:
         bg_img = ImageClip("background.jpg")
-        # The .resize() call below is what was crashing. The patch at the top fixes it.
         bg = bg_img.resize(height=h).crop(x1=0, y1=0, width=w, height=h, x_center=bg_img.w/2, y_center=h/2)
     else:
         bg = ColorClip(size=(w, h), color=(20, 20, 20))
     
     bg = bg.set_duration(total_duration)
-    dark_layer = ColorClip(size=(w, h), color=(0,0,0), opacity=0.6).set_duration(total_duration)
+    
+    # --- THE FIX IS HERE ---
+    # We moved .set_opacity() to the end chain
+    dark_layer = ColorClip(size=(w, h), color=(0,0,0)).set_opacity(0.6).set_duration(total_duration)
 
     # Text Elements
     hook_txt = TextClip("ONLY 1% PASS", fontsize=90, color='yellow', font=FONT, stroke_color='black', stroke_width=3)
