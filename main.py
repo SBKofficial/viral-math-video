@@ -14,15 +14,14 @@ from moviepy.audio.fx.all import audio_loop
 # --- CONFIGURATION ---
 THINKING_TIME = 2.5 
 FONT = 'Impact'
-# New "Nature" Prompt - Vibrant and Colorful
-POLLINATIONS_PROMPT = "breathtaking nature landscape, majestic mountains, deep forest, cinematic lighting, 8k render, vibrant colors, photorealistic"
+# UPDATED PROMPT: Matches your uploaded reference image
+POLLINATIONS_PROMPT = "vertical portrait, majestic alpine mountain valley, dramatic stormy clouds, green grassy foreground, cinematic lighting, 8k render, photorealistic, national geographic style"
 
 # --- ANIMATION FUNCTIONS ---
 def slide_down(t, duration=0.8, start_y=-300, final_y=200):
     if t < duration:
         progress = t / duration
-        # Ease-out effect
-        progress = 1 - (1 - progress) ** 3 
+        progress = 1 - (1 - progress) ** 3 # Ease-out
         current_y = start_y + (final_y - start_y) * progress
         return ('center', int(current_y))
     else:
@@ -43,9 +42,11 @@ def download_assets():
     
     # A. Download AI Background
     seed = random.randint(1, 99999)
-    bg_url = f"https://image.pollinations.ai/prompt/{POLLINATIONS_PROMPT} {seed}"
+    # We added the seed to the URL to ensure a new image every time
+    bg_url = f"https://image.pollinations.ai/prompt/{POLLINATIONS_PROMPT}?seed={seed}&width=1080&height=1920&nologo=true"
+    
     try:
-        print(f"Downloading Nature Background (Seed: {seed})...")
+        print(f"Downloading Mountain Background (Seed: {seed})...")
         r = requests.get(bg_url, headers=headers, timeout=60)
         if r.status_code == 200 and len(r.content) > 5000:
             with open("background.jpg", 'wb') as f:
@@ -83,7 +84,6 @@ def generate_viral_problem():
 # --- 3. VOICE ENGINE ---
 def create_voiceover():
     print("Generating TTS...")
-    # Using 'com.au' (Australian) or 'co.uk' sometimes sounds more engaging/unique
     tts_hook = gTTS("Only 1 percent can solve this.", lang='en', tld='com')
     tts_hook.save("audio_hook.mp3")
     
@@ -128,12 +128,11 @@ def create_math_short():
         bg = bg_img.resize(height=h).crop(x1=0, y1=0, width=w, height=h, x_center=bg_img.w/2, y_center=h/2)
     else:
         print("Using Fallback (Forest Green).")
-        # Fallback is now deep forest green (RGB: 10, 60, 20)
         bg = ColorClip(size=(w, h), color=(10, 60, 20))
     
     bg = bg.set_duration(total_duration)
     
-    # Dark Layer: Reduced opacity (0.3) and Dark Blue tint (0, 10, 30) to preserve nature vibe
+    # Dark Layer: Very light opacity (0.2) to let the mountain view shine
     dark_layer = ColorClip(size=(w, h), color=(0, 10, 30)).set_opacity(0.3).set_duration(total_duration)
 
     # --- TEXT ANIMATIONS ---
