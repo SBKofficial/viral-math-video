@@ -7,6 +7,7 @@ if not hasattr(PIL.Image, 'ANTIALIAS'):
 import random
 import requests
 import os
+import time
 from gtts import gTTS
 from moviepy.editor import *
 from moviepy.audio.fx.all import audio_loop
@@ -14,14 +15,14 @@ from moviepy.audio.fx.all import audio_loop
 # --- CONFIGURATION ---
 THINKING_TIME = 2.5 
 FONT = 'Impact'
-# UPDATED PROMPT: Matches your uploaded reference image
-POLLINATIONS_PROMPT = "vertical portrait, majestic alpine mountain valley, dramatic stormy clouds, green grassy foreground, cinematic lighting, 8k render, photorealistic, national geographic style"
+# Backup prompt (only used if you forget to upload an image)
+PROMPT_TEXT = "vertical hyperrealistic mountain nature, dark moody lighting, 8k"
 
 # --- ANIMATION FUNCTIONS ---
 def slide_down(t, duration=0.8, start_y=-300, final_y=200):
     if t < duration:
         progress = t / duration
-        progress = 1 - (1 - progress) ** 3 # Ease-out
+        progress = 1 - (1 - progress) ** 3 
         current_y = start_y + (final_y - start_y) * progress
         return ('center', int(current_y))
     else:
@@ -37,35 +38,39 @@ def slide_up(t, duration=0.5, start_y=1600, final_y=1400):
         return ('center', final_y)
 
 # --- 1. ASSET FACTORY ---
-def download_assets():
+def prepare_assets():
     headers = {'User-Agent': 'Mozilla/5.0'}
     
-    # A. Download AI Background
-    seed = random.randint(1, 99999)
-    # We added the seed to the URL to ensure a new image every time
-    bg_url = f"https://image.pollinations.ai/prompt/{POLLINATIONS_PROMPT}?seed={seed}&width=1080&height=1920&nologo=true"
-    
-    try:
-        print(f"Downloading Mountain Background (Seed: {seed})...")
-        r = requests.get(bg_url, headers=headers, timeout=60)
-        if r.status_code == 200 and len(r.content) > 5000:
-            with open("background.jpg", 'wb') as f:
-                f.write(r.content)
-            print("Background Downloaded.")
-        else:
-             print("Background download failed/empty.")
-    except Exception as e:
-        print(f"Background download error: {e}")
+    # A. BACKGROUND CHECK
+    # Check if the user uploaded a file named "background.jpg"
+    if os.path.exists("background.jpg") and os.path.getsize("background.jpg") > 5000:
+        print("✅ User uploaded background detected. Using it.")
+    else:
+        print("⚠️ No local background found. Downloading backup from AI...")
+        # Fallback: Download AI image if user didn't upload one
+        seed = random.randint(1, 99999)
+        safe_prompt = PROMPT_TEXT.replace(" ", "%20")
+        ai_url = f"https://image.pollinations.ai/prompt/{safe_prompt}?width=1080&height=1920&nologo=true&seed={seed}"
+        try:
+            r = requests.get(ai_url, headers=headers, timeout=30)
+            if r.status_code == 200:
+                with open("background.jpg", 'wb') as f:
+                    f.write(r.content)
+                print("AI Background Downloaded.")
+        except Exception as e:
+            print(f"Backup download failed: {e}")
 
-    # B. Download Ticking Sound
-    sfx_url = "https://github.com/rafaelreis-hotmart/Audio-Sample-files/raw/master/sample.ogg"
-    try:
-        print("Downloading Ticking SFX...")
-        r = requests.get(sfx_url, headers=headers, timeout=30)
-        with open("ticking.ogg", 'wb') as f:
-            f.write(r.content)
-    except Exception as e:
-        print(f"SFX download failed: {e}")
+    # B. DOWNLOAD TICKING SOUND
+    # Only download if it doesn't exist
+    if not os.path.exists("ticking.ogg"):
+        sfx_url = "https://github.com/rafaelreis-hotmart/Audio-Sample-files/raw/master/sample.ogg"
+        try:
+            print("Downloading Ticking SFX...")
+            r = requests.get(sfx_url, headers=headers, timeout=30)
+            with open("ticking.ogg", 'wb') as f:
+                f.write(r.content)
+        except Exception as e:
+            print(f"SFX download failed: {e}")
 
 # --- 2. MATH GENERATOR ---
 def generate_viral_problem():
@@ -92,9 +97,7 @@ def create_voiceover():
 
 # --- 4. VIDEO ENGINE ---
 def create_math_short():
-    if os.path.exists("background.jpg"): os.remove("background.jpg")
-    
-    download_assets() 
+    prepare_assets() 
     problem = generate_viral_problem()
     create_voiceover() 
     
@@ -123,31 +126,32 @@ def create_math_short():
     
     # Background Logic
     if os.path.exists("background.jpg") and os.path.getsize("background.jpg") > 5000:
-        print("Using Nature Background.")
         bg_img = ImageClip("background.jpg")
-        bg = bg_img.resize(height=h).crop(x1=0, y1=0, width=w, height=h, x_center=bg_img.w/2, y_center=h/2)
+        # Resize to fill height, then Center Crop width
+        bg = bg_img.resize(height=h)
+        bg = bg.crop(x1=bg.w/2 - w/2, y1=0, width=w, height=h)
     else:
-        print("Using Fallback (Forest Green).")
+        print("Using Emergency Color (Should not happen if you uploaded image).")
         bg = ColorClip(size=(w, h), color=(10, 60, 20))
     
     bg = bg.set_duration(total_duration)
     
-    # Dark Layer: Very light opacity (0.2) to let the mountain view shine
+    # Dark Layer (0.3 opacity) - Makes text readable
     dark_layer = ColorClip(size=(w, h), color=(0, 10, 30)).set_opacity(0.3).set_duration(total_duration)
 
     # --- TEXT ANIMATIONS ---
     
-    # HOOK: Slide Down
+    # HOOK
     hook_txt = TextClip("ONLY 1% PASS", fontsize=90, color='yellow', font=FONT, stroke_color='black', stroke_width=3)
     hook_txt = hook_txt.set_position(lambda t: slide_down(t))
     hook_txt = hook_txt.set_duration(total_duration)
 
-    # QUESTION: Pop/Fade
+    # QUESTION
     question_txt = TextClip(f"{problem} = ?", fontsize=110, color='white', font=FONT, stroke_color='black', stroke_width=4)
     question_txt = question_txt.set_position('center')
     question_txt = question_txt.set_start(start_thinking).set_duration(THINKING_TIME + clip_cta.duration).crossfadein(0.3)
 
-    # CTA: Slide Up
+    # CTA
     comment_txt = TextClip("👇 COMMENT ANSWER 👇", fontsize=60, color='cyan', font=FONT, stroke_color='black', stroke_width=2)
     comment_txt = comment_txt.set_position(lambda t: slide_up(t))
     comment_txt = comment_txt.set_start(start_cta).set_duration(clip_cta.duration)
