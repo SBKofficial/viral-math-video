@@ -1,13 +1,29 @@
-steps:
+name: Daily Math Short Generator
+
+on:
+  workflow_dispatch: # Allows you to run it manually
+  schedule:
+    - cron: '0 6 * * *' # Runs automatically everyday at 6:00 AM UTC
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
       - name: Checkout Code
         uses: actions/checkout@v3
 
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.11' # 3.9 is the most stable for these libraries
+          # We use 3.9 because it is the most stable for MoviePy 1.0.3
+          # This prevents the "No module named moviepy.editor" error
+          python-version: '3.11'
 
-      - name: Install System Dependencies
+      - name: Install System Dependencies (FFMPEG)
         run: sudo apt-get install -y ffmpeg
 
       - name: Install Dependencies from requirements.txt
@@ -15,11 +31,13 @@ steps:
 
       - name: Generate and Send Video
         env: 
+          # This securely passes your secrets to the Python script
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python generate_video.py
 
       - name: Upload Video Artifact (Backup)
+        # This saves the video to GitHub just in case Telegram fails
         uses: actions/upload-artifact@v4
         with:
           name: daily-math-short
