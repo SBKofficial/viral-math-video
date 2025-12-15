@@ -1,6 +1,4 @@
 moviepy==1.0.3
-gTTS
-requests
-imageio==2.9.0
-imageio-ffmpeg
+pillow
 decorator==4.4.2
+imageio-ffmpeg
