@@ -1,9 +1,9 @@
 name: Daily Math Short Generator
 
 on:
-  workflow_dispatch: # Allows you to click "Run" manually
+  workflow_dispatch:
   schedule:
-    - cron: '0 6 * * *' # Runs automatically every day at 6:00 AM UTC
+    - cron: '0 6 * * *'
 
 permissions:
   contents: write
@@ -21,18 +21,22 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install System Dependencies (FFMPEG)
+      - name: Install System Dependencies
         run: sudo apt-get install -y ffmpeg
 
       - name: Install Python Libraries
         run: |
-          pip install moviepy==1.0.3 pillow decorator==4.4.2 imageio-ffmpeg
-          # Using specific versions for maximum stability
+          # requests is needed for Telegram
+          pip install "moviepy>=2.0.0.dev2" pillow imageio-ffmpeg requests
 
-      - name: Generate Video
+      - name: Generate and Send Video
+        env: 
+          # This connects your GitHub Secrets to the Python Script
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python generate_video.py
 
-      - name: Upload Video Artifact
+      - name: Upload Video Artifact (Backup)
         uses: actions/upload-artifact@v4
         with:
           name: daily-math-short
