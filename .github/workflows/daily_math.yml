@@ -1,40 +1,40 @@
-name: Daily Math Factory
+name: Daily Math Short Generator
 
 on:
+  workflow_dispatch: # Allows you to click "Run" manually
   schedule:
-    - cron: '0 9 * * *' # Runs everyday at 9:00 AM UTC
-  workflow_dispatch: # Allows MANUAL trigger for testing
+    - cron: '0 6 * * *' # Runs automatically every day at 6:00 AM UTC
+
+permissions:
+  contents: write
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v2
-
-      - name: Install System Dependencies
-        # Installs ImageMagick and fixes the security policy so Python can write text
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y imagemagick
-          sudo sed -i 's/none/read,write/g' /etc/ImageMagick-6/policy.xml
+      - name: Checkout Code
+        uses: actions/checkout@v3
 
       - name: Set up Python
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v4
         with:
-          python-version: '3.9'
+          python-version: '3.11'
+
+      - name: Install System Dependencies (FFMPEG)
+        run: sudo apt-get install -y ffmpeg
 
       - name: Install Python Libraries
-        run: pip install -r requirements.txt
+        run: |
+          pip install moviepy==1.0.3 pillow decorator==4.4.2 imageio-ffmpeg
+          # Using specific versions for maximum stability
 
       - name: Generate Video
-        run: python main.py
+        run: python generate_video.py
 
       - name: Upload Video Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: viral-math-video
-          path: |
-            math_final.mp4
-            metadata.txt
+          name: daily-math-short
+          path: daily_short.mp4
+          retention-days: 1
